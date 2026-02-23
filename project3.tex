@@ -1,0 +1,427 @@
+% Document setup
+\RequirePackage{fix-cm}
+\documentclass{article}
+\usepackage{preamble}
+
+%===============================%
+%=============Inputs============%
+%===============================%
+\newcommand{\studentname}{YOUR NAME GOES HERE!}
+
+%===============================%
+%====Make Solutions Visible=====%
+%===============================%
+\showsolutionstrue
+
+%===============================%
+%=============Figures===========%
+%===============================%
+% Remember to start figures with 
+
+% \begin{figure}[H]
+
+% the [H] is critical!
+
+
+%==============================%
+%=====Beginning of Document====%
+%==============================%
+\begin{document}
+\pagestyle{mypagestyle}
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Project 3: Modeling and simulation of multi-drone swarms
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\project{3}{Modeling and simulation of multi-drone swarms}{Wed. Feb. 25  @ 11:59PM PST}
+
+\subsection*{Introduction}
+In this project, you will use a genetic algorithm to find optimal control parameters for a swarm of autonomous vehicles tasked with mapping a set of targets quickly while avoiding collisions with obstacles and other vehicles. This problem could represent a real-world scenario like inspecting a disaster zone or construction site. All necessary constants are defined in a glossary at the end of this document.   
+
+
+
+\subsection*{Dynamics and Integration}
+
+
+This project will model autonomous vehicles hereafter simply called ``agents" with the following simplifying assumptions: 
+\begin{itemize}
+    \item The effects of buoyancy, lift, and gravity are of secondary importance and may be neglected. 
+    \item The agents may propel themselves in any direction in 3D space. 
+    \item The agents may be idealized as point masses. 
+    \item The agents know the locations of all targets, obstacles, and other agents.
+\end{itemize}
+
+This problem should be modeled in a fixed Cartesian basis. The generic equations for the position, velocity and acceleration in this basis are given in vector form by: 
+
+\begin{equation}
+    \boldsymbol{r} = r_1\boldsymbol{e}_1 + r_2\boldsymbol{e}_2 + r_3\boldsymbol{e}_3 \label{pos}
+\end{equation}
+\begin{equation}
+    \boldsymbol{v} = \boldsymbol{\dot{r}} = \dot{r}_1\boldsymbol{e}_1 + \dot{r}_2\boldsymbol{e}_2 + \dot{r}_3\boldsymbol{e}_3 \label{vel}
+\end{equation}
+\begin{equation}
+    \boldsymbol{a} = \boldsymbol{\ddot{r}} = \ddot{r}_1\boldsymbol{e}_1 + \ddot{r}_2\boldsymbol{e}_2 + \ddot{r}_3\boldsymbol{e}_3 \label{accel}
+\end{equation}
+
+Each agent with a given number $i$ will follow Newton's second law of motion: 
+
+\begin{equation}
+    m_i\boldsymbol{a}_i = \boldsymbol{\Psi}^{tot}_i \label{Newtons_second_agent}
+\end{equation}
+
+Where $\boldsymbol{\Psi}^{tot}_i$ is the total force vector acting on the agent, defined by: 
+\begin{equation}\label{fTot}
+    \underbrace{\boldsymbol{\Psi}^{tot}_i}_{\text{net force}} = \underbrace{\boldsymbol{F}_{p, i}}_{\text{prop. force}} + \underbrace{\boldsymbol{F}_{d, i}}_{\text{drag force}}
+\end{equation}
+
+The components of the force for this general system are defined as: 
+
+\begin{equation} \label{fProp}
+    \boldsymbol{F}_{p, i} = F_{p,i}\boldsymbol{n}^*_i 
+\end{equation}
+
+\begin{equation} \label{fDrag}
+    \boldsymbol{F}_{d, i} = \tfrac{1}{2}\rho_aC_{d, i}A_i\Vert\boldsymbol{v}_a - \boldsymbol{v}_i\Vert (\boldsymbol{v}_a - \boldsymbol{v}_i)
+\end{equation}
+
+The unit vector $\boldsymbol{n}^*_i$ will be determined by the control parameters described next.
+
+Use the Semi-Implicit Euler method to integrate equation \ref{Newtons_second_agent} in time to a final time of $t_f$: 
+
+\begin{equation}\label{velocity}
+    \boldsymbol{v}_i(t + \Delta t) \; \dot{=} \; \boldsymbol{v}_i(t) +  \boldsymbol{a}_i(t)\Delta t = \boldsymbol{v}_i(t) + \boldsymbol{\Psi}^{tot}_i(t)\tfrac{\Delta t}{m_i}
+\end{equation}
+\begin{equation}\label{position}
+ \boldsymbol{r}_i(t +\Delta t) \; \dot{=} \; \boldsymbol{r}_i(t) +  \boldsymbol{v}_i(t+ \Delta t)\Delta t
+\end{equation}
+
+\vspace{.1 in}
+
+\newpage
+
+\subsection*{Objects, Interactions, and Control Parameters}
+
+Agent behavior is controlled by $\boldsymbol{n}^*_i$, the direction of the propulsive force given in equation \ref{fProp}. For this assignment, there is \textbf{no option to control the magnitude of the thrust}. A given agent interacts with all targets, all other agents, and all obstacles at every time step to determine $\boldsymbol{n}^*_i$.
+
+Targets and obstacles are stationary and positioned randomly throughout the region given by: 
+\begin{equation}
+    (\vert x \vert \leq 100\;m), \;\;(\vert y\vert \leq 100 \;m),\;\; (\vert z \vert \leq 10\;m) \label{target_domain}
+\end{equation}
+
+Initial arrangement of the agents, obstacles, and targets is handled for you in the skeleton code.
+
+\textbf{Objects interact in the following ways: }
+\begin{itemize}
+    \item If an agent passes within {\tt agent\_sight} of a target, that target is ``mapped" and removed from the array of target positions.\footnote{Be thoughtful about removing or flagging objects. If you naively change the size of an array during a {\tt for} loop over that array's indices, for instance, you will have some problems. Additionally, resizing arrays is slow. You should not waste time iterating over irrelevant objects and they must not influence the remaining agents. The exact way you resolve this issue is up to your creativity. Some strategies will be presented in the help sessions.}  
+     \item If two agents pass within {\tt crash\_range} of each other, both agents ``crash" and are removed from the array of agent positions.\footnote{You may neglect the edge case where three or more agents collide simultaneously.}
+    \item If an agent is within {\tt crash\_range} of an obstacle, the agent ``crashes." The obstacle remains. 
+    \item If an agent leaves the region $(\vert x \vert \leq 150\;m), \;\;(\vert y \vert \leq 150 \;m),\;\; ( \vert z \vert \leq 60\;m))$, it ``crashes." 
+    \item In the unlikely event that an agent is close enough to interact with multiple objects in the same time step, the order of priority is: agent-target, agent-agent, agent-obstacle. 
+\end{itemize}
+
+A trial should stop automatically once all targets are mapped or all agents are crashed.
+
+Clearly, the agents should propel themselves away from obstacles and other agents (at least at close range) and toward targets. However, deriving an ideal set of rules to determine their behavior is not practical. Accordingly, we will use a general control law with parameters that can be optimized via a genetic algorithm. The distance between objects should be a key function input, since faraway objects should be treated differently than nearby ones. We will use the Euclidean distance or 2-norm between objects, defined between agent $i$ with position $\boldsymbol{r}_i$ and target $j$ at $\boldsymbol{T}_j$ as: 
+
+\begin{equation}
+    d^{mt}_{ij} \define \Vert \boldsymbol{r}_i - \boldsymbol{T}_j \Vert = \sqrt{(r_{i1} - T_{j1})^2 + (r_{i2} - T_{j2})^2 + (r_{i3} - T_{j3})^2} 
+\end{equation}
+
+The unit vector between $\boldsymbol{r}_i$ and  $\boldsymbol{T}_j$ is given by: 
+
+\begin{equation}
+    \boldsymbol{n}_{i\to j}^{mt} = \frac{\boldsymbol{T}_j - \boldsymbol{r}_i}{\Vert \boldsymbol{T}_j - \boldsymbol{r}_i \Vert}
+\end{equation}
+
+The interaction vector $\boldsymbol{\hat{n}}_{i\to j}^{mt} $ between an agent and a target is defined by the direction of $\boldsymbol{n}_{i\to j}^{mt}$ and a weight given by an exponentially decreasing function\footnote{Exponentially decreasing functions have several good characteristics for this problem: they are very smooth, decrease rapidly, and do not explode for any value of $d_{ij}$. In principle, other function types could be used.} of $d_{ij}$: 
+
+\begin{equation}\label{nMThat}
+    \boldsymbol{\hat{n}}_{i\to j}^{mt}  = (\underbrace{w_{t1}e^{-a_1d^{mt}_{ij}}}_{attraction} - \underbrace{w_{t2}e^{-a_2d^{mt}_{ij}}}_{repulsion})\boldsymbol{n}_{i\to j}^{mt} 
+\end{equation}
+
+The total interaction vector between agent $i$ and all targets is the sum of all interaction vectors: 
+
+\begin{equation}
+    \boldsymbol{N}_i^{mt} = \sum_{j = 1}^{N_t}\boldsymbol{\hat{n}}_{i\to j}^{mt}
+\end{equation}
+
+The interaction with obstacles and other agents follow the same form with different constants. The interaction between agent $i$ and obstacle $j$ with position $\boldsymbol{O}_j$ is given by: 
+
+\begin{equation}
+    d^{mo}_{ij} \define \Vert \boldsymbol{r}_i - \boldsymbol{O}_j \Vert = \sqrt{(r_{i1} - O_{j1})^2 + (r_{i2} - O_{j2})^2 + (r_{i3} - O_{j3})^2}
+\end{equation}
+\begin{equation}
+    \boldsymbol{n}_{i\to j}^{mo}  = \frac{\boldsymbol{O}_j - \boldsymbol{r}_i}{\Vert \boldsymbol{O}_j - \boldsymbol{r}_i \Vert}
+\end{equation}
+\begin{equation}\label{nMOhat}
+    \boldsymbol{\hat{n}}_{i\to j}^{mo} = (w_{o1}e^{-b_1d^{mo}_{ij}} - w_{o2}e^{-b_2d^{mo}_{ij}})\boldsymbol{n}_{i\to j}^{mo}
+\end{equation}
+\begin{equation}
+    \boldsymbol{N}_i^{mo} = \sum_{j = 1}^{N_o}\boldsymbol{\hat{n}}_{i\to j}^{mo}
+\end{equation}   
+
+The interaction between agent $i$ and agent $j$ is given by: 
+
+\begin{equation}
+    d^{mm}_{ij} \define \Vert \boldsymbol{r}_i - \boldsymbol{r}_j \Vert = \sqrt{(r_{i1} - r_{j1})^2 + (r_{i2} - r_{j2})^2 + (r_{i3} - r_{j3})^2}
+\end{equation}
+\begin{equation}\label{nMMhat}
+    \boldsymbol{n}_{i\to j}^{mm} = \frac{\boldsymbol{r}_j - \boldsymbol{r}_i}{\Vert \boldsymbol{r}_j - \boldsymbol{r}_i \Vert}
+\end{equation}
+\begin{equation}
+    \boldsymbol{\hat{n}}_{i\to j}^{mm} = (w_{m1}e^{-c_1d^{mm}_{ij}} - w_{m2}e^{-c_2d^{mm}_{ij}})\boldsymbol{n}_{i\to j}^{mm}
+\end{equation}
+\begin{equation}
+    \boldsymbol{N}_i^{mm} = \sum_{j = 1, \;j \neq i}^{N_m}\boldsymbol{\hat{n}}_{i\to j}^{mm}
+\end{equation}  
+
+The total interaction between an agent and the environment is given by a weighted sum of the interactions with each type of object: 
+\begin{equation}\label{Ntot}
+\boldsymbol{N}_i^{tot} = W_{mt}\boldsymbol{N}_i^{mt} + W_{mo}\boldsymbol{N}_i^{mo} + W_{mm}\boldsymbol{N}_i^{mm}
+\end{equation}
+
+Finally, the propulsive force direction $\boldsymbol{n}^*_i$ is given by: 
+\begin{equation}
+    \boldsymbol{n}^*_i = \frac{\boldsymbol{N}_i^{tot}}{\Vert \boldsymbol{N}_i^{tot} \Vert} \label{prop_dir}
+\end{equation}
+All interaction parameters $
+( W_{mt}, W_{mo}, W_{mm}, w_{t1}, w_{t2}, w_{o1}, w_{o2}, w_{m1}, w_{m2}, a_1, a_2, b_1, b_2,  c_1, c_2)$ will be determined by your genetic algorithm.
+\newpage{}
+\centerline{\bf GENETIC ALGORITHM}
+
+\vspace{.1 in}
+
+A good set of control parameters will enable agents to map targets quickly and completely without crashes. The cost function for comparing the outputs from different parameters is: 
+
+\begin{equation} \label{PI}
+    \Pi = w_1M^* + w_2T^* + w_3L^* 
+\end{equation}
+
+\begin{equation}
+    M^* = \frac{\text{(Unmapped targets)}}{\text{(Total targets)}}, \;\; T^* = \frac{\text{(Used time)}}{\text{(Total time)}}, \;\; L^* = \frac{\text{(Crashed agents)}}{\text{(Total agents)}} \label{stars}
+\end{equation}
+
+\begin{equation*}
+    w_1 = 70, \;\; w_2 = 10, \;\; w_3 = 20
+\end{equation*}
+
+Note that all terms in the cost function are non-dimensional. The weights reflect the relative importance of each term. The ``design string" for this problem contains all 15 undetermined constants: 
+\begin{equation} 
+\boldsymbol{\Lambda}^{i} =  \{\Lambda^i_1,..., \Lambda^i_N\} = \{ W_{mt}, W_{mo}, W_{mm}, w_{t1}, w_{t2}, w_{o1}, w_{o2}, w_{m1}, w_{m2}, a_1, a_2,  b_1, b_2,  c_1, c_2\}^i
+\end{equation} 
+
+You should initially assume that the values of all design parameters lie in the interval: 
+
+\begin{equation}
+    0 \leq \Lambda_n \leq 2 \;\forall \; n
+\end{equation}
+
+Scale and offset all randomly-generated design strings to span this interval.
+
+\vspace{.1 in}
+ \centerline{ \bf IMPLEMENTATION }
+ \vspace{.1 in}
+ 
+We have provided skeleton codes for the simulation (simulation\_INCOMPLETE.py) and parameter writing scripts (write\_parameters\_INCOMPLETE.py). animation.py, swarmga.py, ga\_class.py, and test\_scripts.ipynb do not need to be modified. \\
+\textbf{Steps:}
+\begin{enumerate}
+    \setcounter{enumi}{-1}
+    \item Fill in the values from the Variable Glossary into the write\_parameters\_INCOMPLETE.py script. Rename it to ``write\_parameters.py" and run in your terminal. 
+    \item In simulation\_INCOMPLETE.py, fill the values from LAM, the list of design variable values, into their respective members in the class.
+    \item Based on the distances computed in \_compute\_distances, build the boolean arrays for mapped targets, drone-obstacle collisions, and drone-drone collisions.
+    \item Using the positions, determine which drones have exited the domain.
+    \item Compute Eqn. \ref{nMThat}, Eqn. \ref{nMOhat}, and Eqn. \ref{nMMhat}.
+    \item Compute Eqn. \ref{Ntot}, Eqn. \ref{fProp}, Eqn. \ref{fDrag}, and Eqn. \ref{fTot}.
+    \item Compute the Semi-Implicit Euler updates to velocity (Eqn. \ref{velocity}) and position (Eqn. \ref{position}).
+    \item Compute Eqn. \ref{stars} and Eqn. \ref{PI}.
+    \item Update the number of remaining targets and drones
+    \item The format is laid out, fill in the methods in the proper order.
+    \item Rename the script to ``simulation.py" and run the test\_scripts.ipynb notebook.
+\end{enumerate}
+ 
+ 
+\newpage
+
+\centerline{ \bf VARIABLE GLOSSARY}
+
+\begin{table}[H]
+ \begin{center}
+  % \rowcolors{2}{gray!25}{white}
+  \caption{Dynamics and Integration Parameters}
+  \begin{tabular}{||c|c|c|c|c||}
+    % \rowcolor{gray!50} 
+    \hline
+    Symbol & Type & Units & Value & Description \\
+    \hline \hline
+        $A_i$ & scalar & m$^2$ & 1 & agent characteristic area\\
+    $C_{d,i}$ & scalar & none & .25 & agent coefficient of drag\\
+        $m_i$ & scalar & kg & 10 & agent mass\\
+     $\boldsymbol{F}_{p,i}$ & $3 \times 1$ vector & N & Eqn. \ref{fProp} & Prop. force vector \\ 
+      $\boldsymbol{n}^*_{i}$ & $3 \times 1$ unit vector & none & Eqn. \ref{prop_dir} & Prop. force direction \\ 
+    $F_{p,i}$ & scalar & N & 200 & Prop. force mag.\\
+    $\boldsymbol{F}_{d,i}$ & $3 \times 1$ vector & m & Eqn. \ref{fDrag} & Drag vector \\ 
+    $\boldsymbol{r}_i$ & $3 \times 1$ vector & m & Eqn. \ref{pos} & agent $i$ position \\ 
+     $\boldsymbol{v}_i$ & $3 \times 1$ vector & m/s & Eqn. \ref{vel} & agent $i$ velocity \\ 
+      $\boldsymbol{a}_i$ & $3 \times 1$ vector & m/s$^2$ & Eqn. \ref{accel} & agent $i$ acceleration \\ 
+    $\boldsymbol{v}_a$ & $3 \times 1$ vector & m/s & $\boldsymbol{0}$& Air velocity\\
+    $\rho_a$ & scalar & kg/m$^3$& 1.225 & Air density\\
+        $\Delta t$ & scalar & s & .2 & Time step size \\
+    $t_f$ & scalar & s & 60 & Maximum task time \\
+    \hline
+  \end{tabular}
+  \vspace{0.5 cm}
+  \caption{Objects and Interactions Parameters}
+  \quad
+    \begin{tabular}{||c|c|c|c|c||}
+     % \rowcolor{gray!50}
+    \hline
+    Symbol & Type & Units & Value & Description \\
+    \hline \hline
+        {\tt agent\_sight} & scalar & m & 5 & Target mapping distance\\
+    {\tt crash\_range} & scalar & m & 2 & agent collision distance\\
+  
+    $N_m$ & scalar & none & 15 & Number of initial agents \\
+    $N_o$ & scalar & none & 25 & Number of obstacles\\
+    $N_t$ & scalar & none & 100 & Number of initial targets\\
+    $\boldsymbol{O}_j$ & $3 \times 1$ vector & m & Eqn. \ref{target_domain} & Obstacle $j$ position \\ 
+    $\boldsymbol{T}_j$ & $3 \times 1$ vector & m & Eqn. \ref{target_domain} & Target $j$ position \\ 
+    \hline
+  \end{tabular}
+  \vspace{0.5 cm}
+  \caption{Genetic Algorithm Parameters}
+  \quad
+    \begin{tabular}{||c|c|c|c|c||}
+     % \rowcolor{gray!50}
+    \hline
+    Symbol & Type & Units & Value & Description \\
+    \hline \hline
+    {\tt children} & scalar & none & 6 & Strings generated by breeding \\
+    {\tt parents} & scalar & none & 6 & Surviving strings for breeding \\
+    {\tt S} & scalar & none & 20 & Designs per generation \\ 
+    {\tt G} & scalar & none & 100 & Total generations \\ 
+    $L*$ & scalar & none & Eqn. \ref{stars} & Fraction of agents lost\\
+    $M^*$ & scalar & none & Eqn. \ref{stars} & Fraction of targets remaining\\
+    $T^*$ & scalar & none & Eqn. \ref{stars} & Fraction of time used\\
+
+    $w_1$ & scalar & none & 70 & Weight of mapping in net cost\\
+    $w_2$ & scalar & none & 10 & Weight of time usage in net cost\\
+    $w_3$ & scalar & none & 20 & Weight of agent losses in net cost\\
+    \hline
+  \end{tabular}
+  \end{center}
+  \end{table}
+\newpage
+
+
+
+ \centerline{ \bf DELIVERABLES}
+ 
+ You should present your work in a concise, typed technical report. The report should be crafted such that a classmate of yours who is not in this class could understand the purpose and methods of this project. \textbf{This report should not be longer than necessary} to convey the key information completely and clearly. There is no specific suggested length. You are \emph{encouraged} to collaborate with your classmates. Appropriate forms of collaboration include: discussing conceptual challenges, discussing implementation strategies, and comparing results. Inappropriate forms of collaboration include: directly exchanging code, directly exchanging results, directly exchanging written report content. In short: discuss the problem freely with your classmates but write your own code and your own report.
+ 
+ Your figures should be clearly labeled, plotted with clear markers and legends, and have axes that include units. The report should have the following sections, addressing the following specific questions in addition to any other key information for understanding your work: 
+ \vspace{.1 in}
+
+
+\textbf{Results and Discussion:} \begin{enumerate}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Problem 1
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\item Provide a convergence plot showing the total cost of the best design, the mean of all parent designs, and the mean of the overall population for each generation. 
+
+% \begin{answer}
+% %-----------------------------%
+% % Place answer here
+% %-----------------------------%
+% \end{answer}
+
+    
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Problem 2
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\item Provide a plot showing the individual performance components (i.e., plot $M^*$, $T^*$, and $L^*$), for the overall best performer, mean parental population, and overall population. Discuss any important observations.
+
+% \begin{answer}
+% %-----------------------------%
+% % Place answer here
+% %-----------------------------%
+% \end{answer}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Problem 3
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\item{Report your best-performing 4 designs in a table similar to the following. 
+\begin{table}[H]
+\begin{center}
+%\begin{tiny}
+\hspace{-0.1 in} 
+\begin{tabular}{l|l|l|l|l|l}\hline
+  \multicolumn{1}{l|}{DESIGN}&
+  \multicolumn{1}{l|}{$\Lambda_1$}&
+  \multicolumn{1}{l|}{$\Lambda_2$}&
+  \multicolumn{1}{l|}{$\Lambda_3$}&
+  \multicolumn{1}{l|}{$etc$}&
+  \multicolumn{1}{l}{$\Pi$}\\
+\hline
+        1     & & & & & \\
+        2     & & & & & \\
+        3     & & & & & \\
+        4     & & & & & \\
+\hline 
+\end{tabular}
+%\end{tiny}
+\caption{The top 4 system parameter performers.}\label{tab1}
+\end{center}
+\end{table}}
+
+% \begin{answer}
+% %-----------------------------%
+% % Just Fill In The Table
+% %-----------------------------%
+% \end{answer}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Problem 4
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\item Discuss the results. How much variation does each parameter have between your top performers? Do any parameters have negative values? Are any values very near zero? Is anything else notable about the results and the behavior they should create? 
+% \begin{answer}
+% %-----------------------------%
+% % Place Answer Here
+% %-----------------------------%
+% \end{answer}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Problem 5
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\item{ Include a series of plots showing how your best design moves the agents. Include 5 approximately evenly-spaced frames from $t = 0$ until the final time for your system. Agents, targets and obstacles should all be clearly shown with distinct marker styles, axes should be labeled and the title should contain the time at which the snapshot occurs. Screenshots are allowed and the frames do not have to be exactly evenly spaced in time.}
+
+% \begin{answer}
+% %-----------------------------%
+% % Place answer here
+% %-----------------------------%
+% \end{answer}
+
+
+\end{enumerate}
+
+
+
+
+
+\textbf{To submit your assignment, do BOTH of the following:}
+\begin{enumerate}
+    \item Submit your PDF copy of your typed report on Gradescope before the end of day (11:59 pm PST). 
+    \item Submit a zip file to Gradescope containing your code (as a .py file) and any supporting files required to run your code. 
+\end{enumerate}
+
+
+
+% End document
+\end{document}
