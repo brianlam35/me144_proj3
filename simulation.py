@@ -65,9 +65,9 @@ class Simulation:
         self.pos = pos.T
         self.vel = np.zeros([self.Nm, 3])
 
-        self.pos0 = self.pos                              # Initial agent positions
-        self.vel0 = self.vel                              # Initial agent velocities
-        self.tar0 = self.tar                              # Initial target positions
+        self.pos0 = self.pos.copy()                              # Initial agent positions
+        self.vel0 = self.vel.copy()                              # Initial agent velocities
+        self.tar0 = self.tar.copy()                              # Initial target positions
 
 
     def _read_optimal_string(self)-> None:
@@ -89,21 +89,21 @@ class Simulation:
         When in the GA, design strings are passed into the simulation and read into the class by this method.
         """
         ######## Step 1 ################
-        self.Wmt =
-        self.Wmo =
-        self.Wmm =
-        self.wt1 =
-        self.wt2 =
-        self.wo1 =
-        self.wo2 =
-        self.wm1 =
-        self.wm2 =
-        self.a1 = 
-        self.a2 = 
-        self.b1 = 
-        self.b2 = 
-        self.c1 = 
-        self.c2 =
+        self.Wmt = LAM[0]
+        self.Wmo = LAM[1]
+        self.Wmm = LAM[2]
+        self.wt1 = LAM[3]
+        self.wt2 = LAM[4]
+        self.wo1 = LAM[5]
+        self.wo2 = LAM[6]
+        self.wm1 = LAM[7]
+        self.wm2 = LAM[8]
+        self.a1 = LAM[9]
+        self.a2 = LAM[10]
+        self.b1 = LAM[11]
+        self.b2 = LAM[12]
+        self.c1 = LAM[13]
+        self.c2 = LAM[14]
         ################################ 
 
 
@@ -119,27 +119,39 @@ class Simulation:
         mmDiff [ndarray]: matrix of the distance pointing from every drone to every obstacle
         """
 
-        self.mtDiff = np.zeros((len(self.pos[:, 0]), len(self.tar[:, 0]), 3))
-        self.mmDiff = np.zeros((len(self.pos[:, 0]), len(self.pos[:, 0]), 3))
-        self.moDiff = np.zeros((len(self.pos[:, 0]), len(self.obs[:, 0]), 3))
+        Nm = self.pos.shape[0]
+        Nt = self.tar.shape[0]
+        No = self.obs.shape[0]
 
-        self.mtDist = np.zeros((len(self.pos[:, 0]), len(self.tar[:, 0])))
-        self.mmDist = np.zeros((len(self.pos[:, 0]), len(self.pos[:, 0])))
-        self.moDist = np.zeros((len(self.pos[:, 0]), len(self.obs[:, 0])))
+        # Allocate arrays
+        self.mtDiff = np.full((Nm, Nt, 3), np.nan)
+        self.mmDiff = np.full((Nm, Nm, 3), np.nan)
+        self.moDiff = np.full((Nm, No, 3), np.nan)
+
+        self.mtDist = np.full((Nm, Nt), np.nan)
+        self.mmDist = np.full((Nm, Nm), np.nan)
+        self.moDist = np.full((Nm, No), np.nan)
         
         """
         The np.nan_to_num serves its purpose more clearly later, in remove_and_crash method
         """
-        for j in range(len(self.pos[:, 0])):
-            self.mtDiff[j, :, :] = np.nan_to_num(self.tar - self.pos[j])
-            self.mmDiff[j, :, :] = np.nan_to_num(self.pos - self.pos[j])
-            self.moDiff[j, :, :] = np.nan_to_num(self.obs - self.pos[j])
+        for j in range(Nm):
+        # If drone j is dead, leave its row as NaN and skip
+            if np.any(np.isnan(self.pos[j])):
+                continue
+
+            # --- Differences ---
+            self.mtDiff[j, :, :] = self.tar - self.pos[j]     # (Nt,3)
+            self.mmDiff[j, :, :] = self.pos - self.pos[j]     # (Nm,3)
+            self.moDiff[j, :, :] = self.obs - self.pos[j]     # (No,3)
+
+            # --- Distances ---
+            self.mtDist[j, :] = np.linalg.norm(self.mtDiff[j, :, :], ord=2, axis=1)
+            self.mmDist[j, :] = np.linalg.norm(self.mmDiff[j, :, :], ord=2, axis=1)
+            self.moDist[j, :] = np.linalg.norm(self.moDiff[j, :, :], ord=2, axis=1)
+
+            # No self-interactions for drone-drone
             self.mmDiff[j, j, :] = np.nan
-
-            self.mtDist[j, :] = np.linalg.norm(np.nan_to_num(self.pos[j] - self.tar), ord=2, axis=1)
-            self.mmDist[j, :] = np.linalg.norm(np.nan_to_num(self.pos[j] - self.pos), ord=2, axis=1)
-            self.moDist[j, :] = np.linalg.norm(np.nan_to_num(self.pos[j] - self.obs), ord=2, axis=1)
-
             self.mmDist[j, j] = np.nan
     
 
@@ -160,15 +172,36 @@ class Simulation:
         Hint: review parameters agent_sight, crash_range, xmax, ymax, and zmax
         """
         ######## Step 2 ################
-        mtHit = np.where(fill in here)
-        moHit = np.where(fill in here)
-        mmHit = np.where(fill in here)
+        #Collision
+        #mapped target if within sight
+        mtHit = np.where(self.mtDist <= self.agent_sight)
+        #drone-obstacle collision if within crash range
+        moHit = np.where(self.moDist <= self.crash_range)
+        #drone-drone collision if within crash range
+        mmHit = np.where(self.mmDist <= self.crash_range)
         ################################
 
+
+        # Ignore hits coming from already-dead drones (pos is NaN)
+        alive = ~np.isnan(self.pos[:, 0])
+
+        # mtHit is (drone_indices, target_indices)
+        mtHit = (mtHit[0][alive[mtHit[0]]], mtHit[1][alive[mtHit[0]]])
+
+        # moHit is (drone_indices, obstacle_indices)
+        moHit = (moHit[0][alive[moHit[0]]], moHit[1][alive[moHit[0]]])
+
+        # mmHit is (drone_indices, other_drone_indices)
+        mmHit = (mmHit[0][alive[mmHit[0]]], mmHit[1][alive[mmHit[0]]])
+
+
+
         ######## Step 3 ################
-        xLost = np.where(fill in here)
-        yLost = np.where(fill in here)
-        zLost = np.where(fill in here)
+        # Out of bounds crashes
+        # Lower bound?
+        xLost = np.where(np.abs(self.pos[:, 0]) > self.xmax)
+        yLost = np.where(np.abs(self.pos[:, 1]) > self.ymax)
+        zLost = np.where(np.abs(self.pos[:, 2]) > self.zmax)
         ################################
 
         mLost = np.unique(np.hstack([xLost[0], yLost[0], zLost[0]]))
@@ -229,13 +262,16 @@ class Simulation:
         nMM = np.nan_to_num(self.mmDiff / self.mmDist[:, :, np.newaxis])
 
         ######## Step 4 ################
-        nMThat = 
+        #Eq 13 - target interaction
+        nMThat = (self.wt1 * np.exp(-self.a1 * self.mtDist) - self.wt2 * np.exp(-self.a2 * self.mtDist))
         nMThat = np.nan_to_num(nMThat[:, :, np.newaxis] * nMT)
 
-        nMOhat = 
+        #Eq 17 - obstacle interaction
+        nMOhat = (self.wo1 * np.exp(-self.b1 * self.moDist) - self.wo2 * np.exp(-self.b2 * self.moDist)) 
         nMOhat = np.nan_to_num(nMOhat[:, :, np.newaxis] * nMO)
 
-        nMMhat = 
+        #Eq21 - drone interaction
+        nMMhat = (self.wm1 * np.exp(-self.c1 * self.mmDist) - self.wm2 * np.exp(-self.c2 * self.mmDist))
         nMMhat = np.nan_to_num(nMMhat[:, :, np.newaxis] * nMM)
         ################################
 
@@ -246,25 +282,31 @@ class Simulation:
 
         ######## Step 5 ################
         # Sum the weighted attractive/repulsive forces at each drone
-        Ntot = 
+        Ntot = self.Wmt * Nmt + self.Wmo * Nmo + self.Wmm * Nmm
         Ntot_norm = np.linalg.norm(Ntot, 2, axis=1)[:, np.newaxis]
         Ntot_norm[Ntot_norm == 0] = np.nan
         
         # Normalize interactions vector and scale by propulsive force magnitude
-        nProp = np.nan_to_num(fill in here)
-        fProp = 
+        nProp = np.nan_to_num(Ntot / Ntot_norm)
+        fProp = self.Fp * nProp
         
         velocity_diff = np.nan_to_num(self.va - self.vel)
         vNormDiff = np.linalg.norm(velocity_diff, 2, axis=1)[:, np.newaxis]
-        fDrag = 
+        # DOUBLE CHECK - Cdi & Ai?
+        fDrag = 0.5 * self.ra * self.Cdi * self.Ai * vNormDiff * velocity_diff
 
-        fTot = 
+        fTot = fProp + fDrag
         ################################
 
         ######## Step 6 ################
         # Semi-Implicit Euler update
-        self.vel = np.nan_to_num(fill in here)
-        self.pos = np.nan_to_num(fill in here)
+        alive = ~np.isnan(self.pos[:, 0])
+
+        acc = np.zeros_like(self.vel)
+        acc[alive] = fTot[alive] / self.mi
+
+        self.vel[alive] = self.vel[alive] + acc[alive] * self.dt
+        self.pos[alive] = self.pos[alive] + self.vel[alive] * self.dt
         ################################
 
 
@@ -279,16 +321,16 @@ class Simulation:
         """
 
         ######## Step 7 ################
-        Mstar = 
-        Tstar = 
-        Lstar = 
+        Mstar = np.sum(~np.isnan(self.tar[:, 0])) / self.nT0
+        Tstar = (counter * self.dt) / self.tf
+        Lstar = (np.sum(np.isnan(self.pos[:, 0]))) / self.nA0
         if Mstar < 0:
             print('Mstar ' + str(Mstar))
         if Lstar < 0:
             print('Lstar ' + str(Lstar))
         if Tstar < 0:
             print('Tstar ' + str(Tstar))
-        PI = 
+        PI = self.w1 * Mstar + self.w2 * Tstar + self.w3 * Lstar
         ################################
 
         return PI, Mstar, Tstar, Lstar
@@ -307,8 +349,8 @@ class Simulation:
 
         ######## Step 8 ################
         # Update the number of targets and agents
-        self.nT = 
-        self.nA = 
+        self.nT = int(np.sum(~np.isnan(self.tar[:, 0])))
+        self.nA = int(np.sum(~np.isnan(self.pos[:, 0])))
         ################################
 
 
@@ -327,33 +369,56 @@ class Simulation:
         counter = 0  # counter for actual number of time steps
         posData = []  # store mPosition data
         tarData = []  # store mTarget data
-        posData.append(self.pos0)
+        posData.append(self.pos0.copy())
         tarData.append(self.tar0.copy())
         obsData = self.obs.copy()
-        self.pos = self.pos0
-        self.tar = self.tar0
+        self.pos = self.pos0.copy()
+        self.tar = self.tar0.copy()
         
         # Time Loop
         for i in range(tStep):
             self.timestep = i
             ######## Step 9 ################
             # Determine order of the methods from above 
-            self._firstfunction()
+            self._compute_distances()
 
-            self._secondfunction()
+            self._check_collisions()
 
-            self._thirdfunction()
+            if i == 109:
+                print("STEP 109 raw hits:",
+                    "tarMapped_this_step =", len(self.tarMapped),
+                    "mCrash_this_step =", len(self.mCrash))
+
+            self._label_crash_and_map()
             
-            self._fourthfunction()
+            if i == 109:
+                remaining_targets_after_label = np.sum(~np.isnan(self.tar[:, 0]))
+                print("STEP 109 after label:",
+                    "remaining_targets =", remaining_targets_after_label)
+            
+            self._compute_dynamics()
+
+            self._remove_crash_and_map() # put this after break?
+
+            if i in [108, 109, 110, 111, 112]:
+                alive_idx = np.where(~np.isnan(self.pos[:, 0]))[0]
+                print("step", i, "alive_idx:", alive_idx)
+
+            if i % 10 == 0 or i > 95:
+                remaining_targets = np.sum(~np.isnan(self.tar[:, 0]))
+                remaining_drones  = np.sum(~np.isnan(self.pos[:, 0]))
+                print(f"step {i:3d} | targets {remaining_targets:3d} | drones {remaining_drones:2d}")
 
             # if all agents are lost, crashed, or eliminated, stop the simulation
             if np.all(np.isnan(self.tar)) or np.all(np.isnan(self.pos)):
+                print("BREAK at step", i,
+                        "| all_targets_nan:", np.all(np.isnan(self.tar)),
+                        "| all_drones_nan:", np.all(np.isnan(self.pos)))
                 break
 
-            self._fifthfunction()
             ################################
             
-            posData.append(self.pos)
+            posData.append(self.pos.copy())
             tarData.append(self.tar.copy())
             
             counter += 1
@@ -376,5 +441,10 @@ if __name__ == "__main__":
     
     PI, posData, tarData, obsData, counter, Mstar, Tstar, Lstar = sim.run_simulation(read_LAM=True,LAM=LAM)
     print(PI)
+    print("M*:", Mstar, "T*:", Tstar, "L*:", Lstar)
+    print("timesteps:", counter)
+    print("Remaining targets:", sim.nT)
+    print("Remaining agents:", sim.nA)
+    print(parameters)
     
 
