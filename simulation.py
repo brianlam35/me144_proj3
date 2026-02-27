@@ -384,36 +384,14 @@ class Simulation:
 
             self._check_collisions()
 
-            if i == 109:
-                print("STEP 109 raw hits:",
-                    "tarMapped_this_step =", len(self.tarMapped),
-                    "mCrash_this_step =", len(self.mCrash))
-
             self._label_crash_and_map()
-            
-            if i == 109:
-                remaining_targets_after_label = np.sum(~np.isnan(self.tar[:, 0]))
-                print("STEP 109 after label:",
-                    "remaining_targets =", remaining_targets_after_label)
             
             self._compute_dynamics()
 
             self._remove_crash_and_map() # put this after break?
 
-            if i in [108, 109, 110, 111, 112]:
-                alive_idx = np.where(~np.isnan(self.pos[:, 0]))[0]
-                print("step", i, "alive_idx:", alive_idx)
-
-            if i % 10 == 0 or i > 95:
-                remaining_targets = np.sum(~np.isnan(self.tar[:, 0]))
-                remaining_drones  = np.sum(~np.isnan(self.pos[:, 0]))
-                print(f"step {i:3d} | targets {remaining_targets:3d} | drones {remaining_drones:2d}")
-
             # if all agents are lost, crashed, or eliminated, stop the simulation
             if np.all(np.isnan(self.tar)) or np.all(np.isnan(self.pos)):
-                print("BREAK at step", i,
-                        "| all_targets_nan:", np.all(np.isnan(self.tar)),
-                        "| all_drones_nan:", np.all(np.isnan(self.pos)))
                 break
 
             ################################
